@@ -1,0 +1,862 @@
+--[[
+    ZikaFPS UI Library v1.0
+    Hospede este arquivo no GitHub Raw e use loadstring() para carregar.
+    
+    Suporte: PC + Mobile
+    Componentes: Toggle, Checkbox, Slider, Dropdown, Button, Input, ColorPicker, Keybind, Label, Separator
+]]
+
+local Players          = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local RunService       = game:GetService("RunService")
+local LocalPlayer      = Players.LocalPlayer
+
+local IsMobile = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
+
+-- ============================================================
+-- SCREEN GUI
+-- ============================================================
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name           = "ZikaFPS_UI"
+ScreenGui.ResetOnSpawn   = false
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Global
+ScreenGui.DisplayOrder   = 999
+ScreenGui.IgnoreGuiInset = true
+
+local protectgui = protectgui or (syn and syn.protect_gui) or (function() end)
+pcall(protectgui, ScreenGui)
+
+if gethui then
+    ScreenGui.Parent = gethui()
+else
+    pcall(function()
+        ScreenGui.Parent = game:GetService("CoreGui")
+    end)
+    if not ScreenGui.Parent then
+        ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+    end
+end
+
+-- ============================================================
+-- TEMA
+-- ============================================================
+local Theme = {
+    BG         = Color3.fromRGB(22,  22,  22),
+    Main       = Color3.fromRGB(28,  28,  28),
+    BG3        = Color3.fromRGB(14,  14,  14),
+    Input      = Color3.fromRGB(14,  14,  14),
+    Accent     = Color3.fromRGB(0,   100, 220),
+    Outline    = Color3.fromRGB(0,   75,  180),
+    OutlineDim = Color3.fromRGB(55,  55,  55),
+    Font       = Color3.fromRGB(200, 200, 200),
+    FontDim    = Color3.fromRGB(110, 110, 110),
+    AccentOff  = Color3.fromRGB(22,  22,  22),
+    Hover      = Color3.fromRGB(36,  36,  36),
+    White      = Color3.fromRGB(255, 255, 255),
+}
+
+local BuiltinThemes = {
+    ["Default"]   = {BG=Color3.fromRGB(22,22,22),  Main=Color3.fromRGB(28,28,28),  Accent=Color3.fromRGB(0,100,220),  Outline=Color3.fromRGB(0,75,180),   Font=Color3.fromRGB(200,200,200)},
+    ["Dark Blue"] = {BG=Color3.fromRGB(8,13,26),   Main=Color3.fromRGB(11,18,36),  Accent=Color3.fromRGB(30,144,255), Outline=Color3.fromRGB(20,60,130),  Font=Color3.fromRGB(210,220,255)},
+    ["Midnight"]  = {BG=Color3.fromRGB(8,8,8),     Main=Color3.fromRGB(14,14,14),  Accent=Color3.fromRGB(130,0,255),  Outline=Color3.fromRGB(70,0,140),   Font=Color3.fromRGB(220,170,255)},
+    ["Red"]       = {BG=Color3.fromRGB(22,8,8),    Main=Color3.fromRGB(28,10,10),  Accent=Color3.fromRGB(210,30,0),   Outline=Color3.fromRGB(110,15,0),   Font=Color3.fromRGB(255,200,200)},
+    ["Green"]     = {BG=Color3.fromRGB(8,22,8),    Main=Color3.fromRGB(10,28,10),  Accent=Color3.fromRGB(0,180,60),   Outline=Color3.fromRGB(0,90,30),    Font=Color3.fromRGB(200,255,215)},
+    ["Purple"]    = {BG=Color3.fromRGB(14,8,22),   Main=Color3.fromRGB(18,10,30),  Accent=Color3.fromRGB(160,0,255),  Outline=Color3.fromRGB(90,0,160),   Font=Color3.fromRGB(230,200,255)},
+}
+
+-- Registry para re-colorir ao trocar tema
+local Registry = {}
+local ColorPrevs = {}
+
+local function Reg(key, inst, prop)
+    if not Registry[key] then Registry[key] = {} end
+    table.insert(Registry[key], {inst=inst, prop=prop or "BackgroundColor3"})
+end
+
+local function ApplyTheme()
+    for key, list in pairs(Registry) do
+        local color = Theme[key]
+        if color then
+            for _, e in ipairs(list) do
+                pcall(function() e.inst[e.prop] = color end)
+            end
+        end
+    end
+    for key, prev in pairs(ColorPrevs) do
+        if Theme[key] then pcall(function() prev.BackgroundColor3 = Theme[key] end) end
+    end
+end
+
+local function ApplyBuiltinTheme(name)
+    local t = BuiltinThemes[name]
+    if not t then return end
+    for k, c in pairs(t) do Theme[k] = c end
+    Theme.AccentOff  = Theme.BG
+    Theme.Input      = Color3.fromRGB(14,14,14)
+    Theme.OutlineDim = Color3.fromRGB(55,55,55)
+    Theme.Hover      = Color3.fromRGB(Theme.Main.R*255+8, Theme.Main.G*255+8, Theme.Main.B*255+8)
+    ApplyTheme()
+end
+
+-- ============================================================
+-- HELPERS
+-- ============================================================
+local FONT     = Enum.Font.Code
+local FONTSIZE = IsMobile and 14 or 13
+
+local function New(class, props, parent)
+    local i = Instance.new(class)
+    for k,v in pairs(props) do i[k]=v end
+    if parent then i.Parent=parent end
+    return i
+end
+
+local function Stroke(inst, color, thick)
+    local s = Instance.new("UIStroke")
+    s.Color=color or Theme.Outline; s.Thickness=thick or 1
+    s.LineJoinMode=Enum.LineJoinMode.Miter; s.Parent=inst; return s
+end
+
+local function Pad(inst, x, y)
+    local p = Instance.new("UIPadding")
+    p.PaddingLeft=UDim.new(0,x or 6); p.PaddingRight=UDim.new(0,x or 6)
+    p.PaddingTop=UDim.new(0,y or 4); p.PaddingBottom=UDim.new(0,y or 4)
+    p.Parent=inst
+end
+
+local function VList(inst, gap)
+    local l=Instance.new("UIListLayout")
+    l.FillDirection=Enum.FillDirection.Vertical
+    l.SortOrder=Enum.SortOrder.LayoutOrder
+    l.Padding=UDim.new(0,gap or 3); l.Parent=inst; return l
+end
+
+local function HList(inst, gap)
+    local l=Instance.new("UIListLayout")
+    l.FillDirection=Enum.FillDirection.Horizontal
+    l.SortOrder=Enum.SortOrder.LayoutOrder
+    l.VerticalAlignment=Enum.VerticalAlignment.Center
+    l.Padding=UDim.new(0,gap or 5); l.Parent=inst; return l
+end
+
+local function AutoY(inst) inst.AutomaticSize = Enum.AutomaticSize.Y end
+
+local function Connect(inst, event, cb)
+    inst[event]:Connect(cb)
+    if event == "MouseButton1Click" then
+        inst.TouchTap:Connect(cb)
+    end
+end
+
+-- ============================================================
+-- TOAST
+-- ============================================================
+local ToastLbl = New("TextLabel", {
+    Size=UDim2.new(0,230,0,26), Position=UDim2.new(0.5,-115,1,-50),
+    BackgroundColor3=Theme.Main, BorderSizePixel=0,
+    Text="", Font=FONT, TextSize=11, TextColor3=Theme.Font,
+    Visible=false, ZIndex=999,
+}, ScreenGui)
+Stroke(ToastLbl, Theme.Outline, 1); Pad(ToastLbl,10,2)
+Reg("Main",ToastLbl); Reg("Font",ToastLbl,"TextColor3")
+
+local toastConn
+local function Toast(msg)
+    ToastLbl.Text=msg; ToastLbl.Visible=true
+    if toastConn then toastConn:Disconnect() end
+    local t=tick()
+    toastConn=RunService.Heartbeat:Connect(function()
+        if tick()-t>=2.5 then ToastLbl.Visible=false; toastConn:Disconnect() end
+    end)
+end
+
+-- ============================================================
+-- BOTÃO TOGGLE FLUTUANTE
+-- ============================================================
+local ToggleBtn = New("TextButton", {
+    Size=UDim2.new(0,110,0,26),
+    Position=UDim2.new(0.5,-55,0,8),
+    BackgroundColor3=Color3.fromRGB(10,10,10),
+    BorderSizePixel=0, Text="", ZIndex=9999, AutoButtonColor=false,
+}, ScreenGui)
+
+New("UICorner",{CornerRadius=UDim.new(0,5)},ToggleBtn)
+Stroke(ToggleBtn, Theme.Outline, 1)
+
+local TBInner = New("Frame",{
+    Size=UDim2.new(1,-8,1,0), Position=UDim2.new(0,4,0,0),
+    BackgroundTransparency=1, ZIndex=9999,
+}, ToggleBtn)
+HList(TBInner, 5)
+
+local TBDot = New("Frame",{
+    Size=UDim2.new(0,7,0,7),
+    BackgroundColor3=Color3.fromRGB(0,200,80),
+    BorderSizePixel=0, ZIndex=9999,
+}, TBInner)
+New("UICorner",{CornerRadius=UDim.new(0,10)},TBDot)
+
+New("TextLabel",{
+    Size=UDim2.new(1,-14,1,0), BackgroundTransparency=1,
+    Text="ZikaFPS", Font=FONT, TextSize=13,
+    TextColor3=Color3.fromRGB(220,220,220),
+    TextXAlignment=Enum.TextXAlignment.Left, ZIndex=9999,
+}, TBInner)
+
+-- Drag do toggle btn
+do
+    local drag,dStart,dPos,pressPos
+    ToggleBtn.InputBegan:Connect(function(i)
+        if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then
+            drag=true; dStart=i.Position; dPos=ToggleBtn.Position; pressPos=i.Position
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(i)
+        if drag and (i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch) then
+            local d=i.Position-dStart
+            ToggleBtn.Position=UDim2.new(dPos.X.Scale,dPos.X.Offset+d.X,dPos.Y.Scale,dPos.Y.Offset+d.Y)
+        end
+    end)
+    UserInputService.InputEnded:Connect(function(i)
+        if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then
+            drag=false
+        end
+    end)
+end
+
+-- ============================================================
+-- JANELA PRINCIPAL
+-- ============================================================
+local WIN_W = IsMobile and math.min(workspace.CurrentCamera.ViewportSize.X - 20, 460) or 544
+
+local Window = New("Frame", {
+    Name="ZikaFPS", Size=UDim2.new(0,WIN_W,0,36),
+    Position=UDim2.new(0.5,-WIN_W/2,0,42),
+    BackgroundColor3=Theme.BG, BorderSizePixel=0, ClipsDescendants=false,
+}, ScreenGui)
+AutoY(Window)
+local WinS = Stroke(Window, Theme.Outline, 1)
+Reg("BG",Window); Reg("Outline",WinS,"Color")
+
+-- Toggle click
+do
+    local pressPos2
+    ToggleBtn.InputBegan:Connect(function(i)
+        if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then
+            pressPos2=i.Position
+        end
+    end)
+    ToggleBtn.InputEnded:Connect(function(i)
+        if (i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch) and pressPos2 then
+            if (i.Position-pressPos2).Magnitude < 10 then
+                Window.Visible = not Window.Visible
+                TBDot.BackgroundColor3 = Window.Visible and Color3.fromRGB(0,200,80) or Color3.fromRGB(200,50,50)
+            end
+        end
+    end)
+end
+
+-- Tab bar
+local TabBar = New("Frame",{
+    Size=UDim2.new(1,0,0,26), BackgroundColor3=Theme.BG,
+    BorderSizePixel=0, ZIndex=2,
+}, Window)
+Reg("BG",TabBar)
+
+local TabRow = New("Frame",{
+    Size=UDim2.new(1,-8,1,-6), Position=UDim2.new(0,4,0,3),
+    BackgroundTransparency=1, ZIndex=2,
+}, TabBar)
+HList(TabRow, 2)
+
+local TabLine = New("Frame",{
+    Size=UDim2.new(1,0,0,1), Position=UDim2.new(0,0,1,-1),
+    BackgroundColor3=Theme.Outline, BorderSizePixel=0, ZIndex=2,
+}, TabBar)
+Reg("Outline",TabLine)
+
+-- Drag da janela (PC + Mobile)
+do
+    local drag,dInput,dStart,dPos
+    TabBar.InputBegan:Connect(function(i)
+        if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then
+            drag=true; dStart=i.Position; dPos=Window.Position
+            i.Changed:Connect(function() if i.UserInputState==Enum.UserInputState.End then drag=false end end)
+        end
+    end)
+    TabBar.InputChanged:Connect(function(i)
+        if i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch then dInput=i end
+    end)
+    UserInputService.InputChanged:Connect(function(i)
+        if i==dInput and drag then
+            local d=i.Position-dStart
+            Window.Position=UDim2.new(dPos.X.Scale,dPos.X.Offset+d.X,dPos.Y.Scale,dPos.Y.Offset+d.Y)
+        end
+    end)
+end
+
+-- Content area
+local ContentArea = New("Frame",{
+    Size=UDim2.new(1,0,0,0), Position=UDim2.new(0,0,0,26),
+    BackgroundTransparency=1, BorderSizePixel=0, ClipsDescendants=false,
+}, Window)
+AutoY(ContentArea)
+
+-- PC keybind toggle
+if not IsMobile then
+    UserInputService.InputBegan:Connect(function(inp, processed)
+        if processed then return end
+        if inp.UserInputType==Enum.UserInputType.Keyboard and inp.KeyCode==Enum.KeyCode.End then
+            Window.Visible = not Window.Visible
+            TBDot.BackgroundColor3 = Window.Visible and Color3.fromRGB(0,200,80) or Color3.fromRGB(200,50,50)
+        end
+    end)
+end
+
+-- ============================================================
+-- PANEL BUILDER (interno)
+-- ============================================================
+local function BuildPanel(parentCol, name, order)
+    local wrapper=New("Frame",{Size=UDim2.new(1,0,0,0),BackgroundTransparency=1,BorderSizePixel=0,ClipsDescendants=false,LayoutOrder=order},parentCol)
+    AutoY(wrapper); VList(wrapper,0)
+    New("Frame",{Size=UDim2.new(1,0,0,9),BackgroundTransparency=1,LayoutOrder=1},wrapper)
+
+    local container=New("Frame",{Size=UDim2.new(1,0,0,0),BackgroundColor3=Theme.Main,BorderSizePixel=0,ClipsDescendants=false,LayoutOrder=2},wrapper)
+    AutoY(container)
+    local cS=Stroke(container,Theme.Outline,1)
+    Reg("Main",container); Reg("Outline",cS,"Color")
+
+    if name and name~="" then
+        local tl=New("TextLabel",{
+            Size=UDim2.new(0,#name*7+12,0,14), Position=UDim2.new(0,8,0,-7),
+            BackgroundColor3=Theme.Main, BorderSizePixel=0,
+            Text=name, Font=FONT, TextSize=FONTSIZE-1, TextColor3=Theme.Font, ZIndex=5,
+        }, container)
+        local tlS=Stroke(tl,Theme.Outline,1)
+        Reg("Main",tl); Reg("Outline",tlS,"Color"); Reg("Font",tl,"TextColor3")
+    end
+
+    local inner=New("Frame",{
+        Size=UDim2.new(1,-8,0,0), Position=UDim2.new(0,4,0,10),
+        BackgroundTransparency=1, BorderSizePixel=0, ClipsDescendants=false, ZIndex=2,
+    }, container)
+    AutoY(inner); VList(inner,3)
+    New("Frame",{Size=UDim2.new(1,0,0,4),BackgroundTransparency=1,LayoutOrder=0},inner)
+
+    local panel = {_inner=inner, _order=0}
+    local function N() panel._order=panel._order+1; return panel._order end
+
+    -- ========== Toggle ==========
+    function panel:AddToggle(label, default, callback)
+        local state = default or false
+        local row=New("Frame",{Size=UDim2.new(1,0,0,18),BackgroundTransparency=1,LayoutOrder=N()},inner)
+        HList(row,5)
+        local box=New("Frame",{Size=UDim2.new(0,12,0,12),BackgroundColor3=state and Theme.Accent or Theme.AccentOff,BorderSizePixel=0},row)
+        local bS=Stroke(box, state and Theme.Outline or Theme.OutlineDim, 1)
+        local lbl=New("TextLabel",{Size=UDim2.new(1,-22,0,18),BackgroundTransparency=1,Text=label,Font=FONT,TextSize=FONTSIZE,TextColor3=Theme.Font,TextXAlignment=Enum.TextXAlignment.Left},row)
+        Reg("Font",lbl,"TextColor3")
+        local clk=New("TextButton",{Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,Text="",ZIndex=4},row)
+        local function toggle()
+            state=not state
+            box.BackgroundColor3=state and Theme.Accent or Theme.AccentOff
+            bS.Color=state and Theme.Outline or Theme.OutlineDim
+            if callback then pcall(callback, state) end
+        end
+        clk.MouseButton1Click:Connect(toggle)
+        clk.TouchTap:Connect(toggle)
+        local obj = {GetValue=function() return state end, SetValue=function(_,v) state=v; box.BackgroundColor3=v and Theme.Accent or Theme.AccentOff; bS.Color=v and Theme.Outline or Theme.OutlineDim end}
+        return obj
+    end
+
+    -- ========== Checkbox ==========
+    function panel:AddCheckbox(label, default, callback)
+        local state = default or false
+        local row=New("Frame",{Size=UDim2.new(1,0,0,18),BackgroundTransparency=1,LayoutOrder=N()},inner)
+        HList(row,5)
+        local box=New("Frame",{Size=UDim2.new(0,12,0,12),BackgroundColor3=state and Theme.Accent or Theme.BG3,BorderSizePixel=0},row)
+        local bS=Stroke(box,Theme.OutlineDim,1); Reg("OutlineDim",bS,"Color")
+        local chk=New("TextLabel",{Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,Text=state and "✓" or "",Font=FONT,TextSize=10,TextColor3=Theme.White,TextXAlignment=Enum.TextXAlignment.Center},box)
+        local lbl=New("TextLabel",{Size=UDim2.new(1,-22,0,18),BackgroundTransparency=1,Text=label,Font=FONT,TextSize=FONTSIZE,TextColor3=Theme.Font,TextXAlignment=Enum.TextXAlignment.Left},row)
+        Reg("Font",lbl,"TextColor3")
+        local clk=New("TextButton",{Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,Text="",ZIndex=4},row)
+        local function toggle()
+            state=not state
+            box.BackgroundColor3=state and Theme.Accent or Theme.BG3
+            bS.Color=state and Theme.Outline or Theme.OutlineDim
+            chk.Text=state and "✓" or ""
+            if callback then pcall(callback, state) end
+        end
+        clk.MouseButton1Click:Connect(toggle); clk.TouchTap:Connect(toggle)
+        return {GetValue=function() return state end, SetValue=function(_,v) state=v; box.BackgroundColor3=v and Theme.Accent or Theme.BG3; chk.Text=v and "✓" or "" end}
+    end
+
+    -- ========== Slider ==========
+    function panel:AddSlider(label, min, max, default, callback)
+        min=min or 0; max=max or 100; default=default or min
+        local value=default
+        local col=New("Frame",{Size=UDim2.new(1,0,0,30),BackgroundTransparency=1,LayoutOrder=N()},inner)
+        VList(col,2)
+        local lbl2=New("TextLabel",{Size=UDim2.new(1,0,0,14),BackgroundTransparency=1,Text=label,Font=FONT,TextSize=FONTSIZE,TextColor3=Theme.Font,TextXAlignment=Enum.TextXAlignment.Left},col)
+        Reg("Font",lbl2,"TextColor3")
+        local track=New("Frame",{Size=UDim2.new(1,0,0,14),BackgroundColor3=Theme.BG3,BorderSizePixel=0},col)
+        local tS=Stroke(track,Theme.OutlineDim,1); Reg("BG3",track); Reg("OutlineDim",tS,"Color")
+        local pct=(value-min)/(max-min)
+        local fill=New("Frame",{Size=UDim2.new(pct,0,1,0),BackgroundColor3=Theme.Accent,BorderSizePixel=0,ZIndex=2},track)
+        Reg("Accent",fill)
+        local vLbl=New("TextLabel",{Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,Text=tostring(value).."/"..tostring(max),Font=FONT,TextSize=11,TextColor3=Theme.White,ZIndex=3},track)
+        local function update(absX)
+            local r=math.clamp((absX-track.AbsolutePosition.X)/track.AbsoluteSize.X,0,1)
+            value=math.floor(min+r*(max-min)); fill.Size=UDim2.new(r,0,1,0)
+            vLbl.Text=tostring(value).."/"..tostring(max)
+            if callback then pcall(callback, value) end
+        end
+        local sl=false
+        track.InputBegan:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then sl=true; update(i.Position.X) end end)
+        track.InputEnded:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then sl=false end end)
+        UserInputService.InputChanged:Connect(function(i)
+            if sl and (i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch) then update(i.Position.X) end
+        end)
+        return {
+            GetValue=function() return value end,
+            SetValue=function(_,v)
+                value=v; local r=(v-min)/(max-min)
+                fill.Size=UDim2.new(r,0,1,0); vLbl.Text=tostring(v).."/"..tostring(max)
+            end
+        }
+    end
+
+    -- ========== Dropdown ==========
+    function panel:AddDropdown(label, options, callback)
+        local selected=options[1]
+        local col=New("Frame",{Size=UDim2.new(1,0,0,0),BackgroundTransparency=1,LayoutOrder=N(),ClipsDescendants=false},inner)
+        AutoY(col); VList(col,2)
+        if label and label~="" then
+            local dl=New("TextLabel",{Size=UDim2.new(1,0,0,14),BackgroundTransparency=1,Text=label,Font=FONT,TextSize=FONTSIZE,TextColor3=Theme.Font,TextXAlignment=Enum.TextXAlignment.Left},col)
+            Reg("Font",dl,"TextColor3")
+        end
+        local btnF=New("Frame",{Size=UDim2.new(1,0,0,22),BackgroundColor3=Theme.Input,BorderSizePixel=0,ClipsDescendants=false,ZIndex=10},col)
+        local bFS=Stroke(btnF,Theme.OutlineDim,1); Reg("Input",btnF); Reg("OutlineDim",bFS,"Color")
+        local sLbl=New("TextLabel",{Size=UDim2.new(1,-20,1,0),Position=UDim2.new(0,6,0,0),BackgroundTransparency=1,Text=selected,Font=FONT,TextSize=FONTSIZE,TextColor3=Theme.Font,TextXAlignment=Enum.TextXAlignment.Left,ZIndex=11},btnF)
+        Reg("Font",sLbl,"TextColor3")
+        New("TextLabel",{Size=UDim2.new(0,16,1,0),Position=UDim2.new(1,-18,0,0),BackgroundTransparency=1,Text="▼",Font=FONT,TextSize=10,TextColor3=Theme.FontDim,ZIndex=11},btnF)
+        local dList=New("ScrollingFrame",{Size=UDim2.new(1,0,0,math.min(#options,5)*22),Position=UDim2.new(0,0,1,1),BackgroundColor3=Theme.Main,BorderSizePixel=0,Visible=false,ZIndex=20,ScrollBarThickness=4,ScrollBarImageColor3=Theme.Accent,CanvasSize=UDim2.new(0,0,0,#options*22)},btnF)
+        Stroke(dList,Theme.Outline,1); VList(dList,0); Reg("Main",dList); Reg("Accent",dList,"ScrollBarImageColor3")
+        for _,opt in ipairs(options) do
+            local item=New("TextButton",{Size=UDim2.new(1,0,0,22),BackgroundColor3=Theme.Main,BorderSizePixel=0,Text=opt,Font=FONT,TextSize=FONTSIZE,TextColor3=Theme.Font,ZIndex=21,AutoButtonColor=false},dList)
+            Reg("Main",item); Reg("Font",item,"TextColor3")
+            item.MouseEnter:Connect(function() item.BackgroundColor3=Theme.Hover end)
+            item.MouseLeave:Connect(function() item.BackgroundColor3=Theme.Main end)
+            local function sel() selected=opt; sLbl.Text=opt; dList.Visible=false; if callback then pcall(callback,opt) end end
+            item.MouseButton1Click:Connect(sel); item.TouchTap:Connect(sel)
+        end
+        local open=false
+        local clk=New("TextButton",{Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,Text="",ZIndex=12},btnF)
+        local function toggleOpen() open=not open; dList.Visible=open end
+        clk.MouseButton1Click:Connect(toggleOpen); clk.TouchTap:Connect(toggleOpen)
+        return {
+            GetValue=function() return selected end,
+            SetValue=function(_,v) selected=v; sLbl.Text=v end,
+            SetOptions=function(_,opts)
+                dList:ClearAllChildren(); VList(dList,0)
+                dList.CanvasSize=UDim2.new(0,0,0,#opts*22)
+                dList.Size=UDim2.new(1,0,0,math.min(#opts,5)*22)
+                for _,opt in ipairs(opts) do
+                    local item2=New("TextButton",{Size=UDim2.new(1,0,0,22),BackgroundColor3=Theme.Main,BorderSizePixel=0,Text=opt,Font=FONT,TextSize=FONTSIZE,TextColor3=Theme.Font,ZIndex=21,AutoButtonColor=false},dList)
+                    Reg("Main",item2); Reg("Font",item2,"TextColor3")
+                    item2.MouseEnter:Connect(function() item2.BackgroundColor3=Theme.Hover end)
+                    item2.MouseLeave:Connect(function() item2.BackgroundColor3=Theme.Main end)
+                    local function sel2() selected=opt; sLbl.Text=opt; dList.Visible=false; if callback then pcall(callback,opt) end end
+                    item2.MouseButton1Click:Connect(sel2); item2.TouchTap:Connect(sel2)
+                end
+            end
+        }
+    end
+
+    -- ========== Button ==========
+    function panel:AddButton(label, callback)
+        local btn=New("TextButton",{Size=UDim2.new(1,0,0,22),BackgroundColor3=Theme.BG3,BorderSizePixel=0,Text=label,Font=FONT,TextSize=FONTSIZE,TextColor3=Theme.Font,LayoutOrder=N(),AutoButtonColor=false},inner)
+        local bS=Stroke(btn,Theme.OutlineDim,1); Reg("BG3",btn); Reg("OutlineDim",bS,"Color"); Reg("Font",btn,"TextColor3")
+        btn.MouseEnter:Connect(function() btn.BackgroundColor3=Theme.Hover end)
+        btn.MouseLeave:Connect(function() btn.BackgroundColor3=Theme.BG3 end)
+        btn.MouseButton1Click:Connect(function() if callback then pcall(callback) end end)
+        btn.TouchTap:Connect(function() if callback then pcall(callback) end end)
+        return btn
+    end
+
+    -- ========== Button Row (2 lado a lado) ==========
+    function panel:AddButtonRow(label1, cb1, label2, cb2)
+        local row=New("Frame",{Size=UDim2.new(1,0,0,22),BackgroundTransparency=1,LayoutOrder=N()},inner)
+        HList(row,3)
+        for _,p in ipairs({{label1,cb1},{label2,cb2}}) do
+            local btn=New("TextButton",{Size=UDim2.new(0.5,-2,1,0),BackgroundColor3=Theme.BG3,BorderSizePixel=0,Text=p[1],Font=FONT,TextSize=FONTSIZE,TextColor3=Theme.Font,AutoButtonColor=false},row)
+            local bS=Stroke(btn,Theme.OutlineDim,1); Reg("BG3",btn); Reg("OutlineDim",bS,"Color"); Reg("Font",btn,"TextColor3")
+            btn.MouseEnter:Connect(function() btn.BackgroundColor3=Theme.Hover end)
+            btn.MouseLeave:Connect(function() btn.BackgroundColor3=Theme.BG3 end)
+            btn.MouseButton1Click:Connect(function() if p[2] then pcall(p[2]) end end)
+            btn.TouchTap:Connect(function() if p[2] then pcall(p[2]) end end)
+        end
+    end
+
+    -- ========== Input ==========
+    function panel:AddInput(label, placeholder, callback)
+        if label and label~="" then
+            local lbl2=New("TextLabel",{Size=UDim2.new(1,0,0,14),BackgroundTransparency=1,Text=label,Font=FONT,TextSize=FONTSIZE,TextColor3=Theme.Font,TextXAlignment=Enum.TextXAlignment.Left,LayoutOrder=N()},inner)
+            Reg("Font",lbl2,"TextColor3")
+        end
+        local frame=New("Frame",{Size=UDim2.new(1,0,0,22),BackgroundColor3=Theme.Input,BorderSizePixel=0,LayoutOrder=N()},inner)
+        local fS=Stroke(frame,Theme.OutlineDim,1); Reg("Input",frame); Reg("OutlineDim",fS,"Color")
+        local box=New("TextBox",{
+            Size=UDim2.new(1,-8,1,0), Position=UDim2.new(0,4,0,0),
+            BackgroundTransparency=1, Text="",
+            PlaceholderText=placeholder or "", PlaceholderColor3=Theme.FontDim,
+            Font=FONT, TextSize=FONTSIZE, TextColor3=Theme.Font,
+            TextXAlignment=Enum.TextXAlignment.Left, ClearTextOnFocus=false,
+        }, frame)
+        Reg("Font",box,"TextColor3"); Reg("FontDim",box,"PlaceholderColor3")
+        box.Focused:Connect(function() fS.Color=Theme.Outline end)
+        box.FocusLost:Connect(function() fS.Color=Theme.OutlineDim; if callback then pcall(callback, box.Text) end end)
+        return {GetValue=function() return box.Text end, SetValue=function(_,v) box.Text=v end}
+    end
+
+    -- ========== Label ==========
+    function panel:AddLabel(text)
+        local l=New("TextLabel",{Size=UDim2.new(1,0,0,16),BackgroundTransparency=1,Text=text,Font=FONT,TextSize=FONTSIZE,TextColor3=Theme.FontDim,TextXAlignment=Enum.TextXAlignment.Left,LayoutOrder=N()},inner)
+        Reg("FontDim",l,"TextColor3")
+        return {SetText=function(_,t) l.Text=t end}
+    end
+
+    -- ========== Separator ==========
+    function panel:AddSeparator()
+        local s=New("Frame",{Size=UDim2.new(1,0,0,1),BackgroundColor3=Theme.Outline,BorderSizePixel=0,LayoutOrder=N()},inner)
+        Reg("Outline",s)
+    end
+
+    -- ========== Color Picker ==========
+    function panel:AddColorPicker(label, default, callback)
+        local color=default or Color3.fromRGB(0,100,220)
+        local row=New("Frame",{Size=UDim2.new(1,0,0,18),BackgroundTransparency=1,LayoutOrder=N()},inner)
+        HList(row,5)
+        local lbl2=New("TextLabel",{Size=UDim2.new(1,-50,0,18),BackgroundTransparency=1,Text=label,Font=FONT,TextSize=FONTSIZE,TextColor3=Theme.Font,TextXAlignment=Enum.TextXAlignment.Left},row)
+        Reg("Font",lbl2,"TextColor3")
+        local prev=New("Frame",{Size=UDim2.new(0,38,0,14),BackgroundColor3=color,BorderSizePixel=0},row)
+        Stroke(prev,Theme.OutlineDim,1)
+        local popup=New("Frame",{Size=UDim2.new(1,0,0,0),BackgroundColor3=Theme.BG3,BorderSizePixel=0,Visible=false,ZIndex=30,ClipsDescendants=false,LayoutOrder=panel._order+1},inner)
+        AutoY(popup); Stroke(popup,Theme.Outline,1); Pad(popup,5,5); VList(popup,4); Reg("BG3",popup)
+        local rgb={r=color.R*255,g=color.G*255,b=color.B*255}
+        local function upd() local c=Color3.fromRGB(rgb.r,rgb.g,rgb.b); prev.BackgroundColor3=c; color=c; if callback then pcall(callback,c) end end
+        for _,info in ipairs({{"r","R"},{"g","G"},{"b","B"}}) do
+            local ch,lb2=info[1],info[2]
+            local sr=New("Frame",{Size=UDim2.new(1,0,0,14),BackgroundTransparency=1},popup); HList(sr,4)
+            New("TextLabel",{Size=UDim2.new(0,10,1,0),BackgroundTransparency=1,Text=lb2,Font=FONT,TextSize=10,TextColor3=Theme.FontDim,TextXAlignment=Enum.TextXAlignment.Left},sr)
+            local trk=New("Frame",{Size=UDim2.new(1,-30,1,0),BackgroundColor3=Theme.BG,BorderSizePixel=0},sr); Stroke(trk,Theme.OutlineDim,1); Reg("BG",trk)
+            local fl=New("Frame",{Size=UDim2.new(rgb[ch]/255,0,1,0),BackgroundColor3=Theme.Accent,BorderSizePixel=0,ZIndex=2},trk); Reg("Accent",fl)
+            local vl=New("TextLabel",{Size=UDim2.new(0,24,1,0),BackgroundTransparency=1,Text=tostring(math.floor(rgb[ch])),Font=FONT,TextSize=10,TextColor3=Theme.Font},sr); Reg("Font",vl,"TextColor3")
+            local sl=false
+            local function upSl(x) local r2=math.clamp((x-trk.AbsolutePosition.X)/trk.AbsoluteSize.X,0,1); rgb[ch]=math.floor(r2*255); fl.Size=UDim2.new(r2,0,1,0); vl.Text=tostring(rgb[ch]); upd() end
+            trk.InputBegan:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then sl=true; upSl(i.Position.X) end end)
+            trk.InputEnded:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then sl=false end end)
+            UserInputService.InputChanged:Connect(function(i) if sl and (i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch) then upSl(i.Position.X) end end)
+        end
+        local open=false
+        local clk=New("TextButton",{Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,Text="",ZIndex=4},row)
+        local function toggleOpen() open=not open; popup.Visible=open; if open then rgb={r=color.R*255,g=color.G*255,b=color.B*255} end end
+        clk.MouseButton1Click:Connect(toggleOpen); clk.TouchTap:Connect(toggleOpen)
+        return {GetValue=function() return color end, SetValue=function(_,c) color=c; prev.BackgroundColor3=c end}
+    end
+
+    -- ========== Keybind ==========
+    function panel:AddKeybind(label, default, callback)
+        local key=default or Enum.KeyCode.E; local listening=false
+        local row=New("Frame",{Size=UDim2.new(1,0,0,18),BackgroundTransparency=1,LayoutOrder=N()},inner)
+        HList(row,5)
+        local lbl2=New("TextLabel",{Size=UDim2.new(1,-60,0,18),BackgroundTransparency=1,Text=label,Font=FONT,TextSize=FONTSIZE,TextColor3=Theme.Font,TextXAlignment=Enum.TextXAlignment.Left},row)
+        Reg("Font",lbl2,"TextColor3")
+        local kbBtn=New("TextButton",{Size=UDim2.new(0,50,0,16),BackgroundColor3=Theme.Input,BorderSizePixel=0,Text=key.Name,Font=FONT,TextSize=11,TextColor3=Theme.Font,AutoButtonColor=false},row)
+        Stroke(kbBtn,Theme.OutlineDim,1); Reg("Input",kbBtn); Reg("Font",kbBtn,"TextColor3")
+        kbBtn.MouseButton1Click:Connect(function()
+            if listening or IsMobile then return end; listening=true; kbBtn.Text="..."
+            local c; c=UserInputService.InputBegan:Connect(function(i,p)
+                if p then return end
+                if i.UserInputType==Enum.UserInputType.Keyboard then key=i.KeyCode; kbBtn.Text=key.Name; listening=false; c:Disconnect(); if callback then pcall(callback,key) end end
+            end)
+        end)
+        return {GetValue=function() return key end}
+    end
+
+    New("Frame",{Size=UDim2.new(1,0,0,4),BackgroundTransparency=1,LayoutOrder=999},inner)
+    return panel
+end
+
+-- ============================================================
+-- UI BUILDER (API pública)
+-- ============================================================
+local UI = {_tabs={}, Toast=Toast, ApplyTheme=ApplyBuiltinTheme, Theme=Theme}
+
+function UI:AddTab(name)
+    local idx=#self._tabs+1
+    local btn=New("TextButton",{
+        Size=UDim2.new(0,0,1,0), AutomaticSize=Enum.AutomaticSize.X,
+        BackgroundColor3=idx==1 and Theme.Main or Theme.BG,
+        BorderSizePixel=0, Text=name, Font=FONT, TextSize=FONTSIZE,
+        TextColor3=Theme.Font, ZIndex=3, LayoutOrder=idx, AutoButtonColor=false,
+    }, TabRow)
+    Pad(btn,10,0)
+    local btnS=Stroke(btn, idx==1 and Theme.Outline or Theme.OutlineDim, 1)
+    Reg("Font",btn,"TextColor3")
+
+    local page=New("Frame",{Size=UDim2.new(1,0,0,0),BackgroundTransparency=1,Visible=idx==1,BorderSizePixel=0,ClipsDescendants=false},ContentArea)
+    AutoY(page)
+    local pi=New("Frame",{Size=UDim2.new(1,-10,0,0),Position=UDim2.new(0,5,0,5),BackgroundTransparency=1,ClipsDescendants=false},page)
+    AutoY(pi)
+    if IsMobile then VList(pi,8) else HList(pi,4) end
+
+    local cL=New("Frame",{Size=IsMobile and UDim2.new(1,0,0,0) or UDim2.new(0.5,-2,0,0),BackgroundTransparency=1,ClipsDescendants=false,LayoutOrder=1},pi)
+    AutoY(cL); VList(cL,8)
+    local cR=New("Frame",{Size=IsMobile and UDim2.new(1,0,0,0) or UDim2.new(0.5,-2,0,0),BackgroundTransparency=1,ClipsDescendants=false,LayoutOrder=2},pi)
+    AutoY(cR); VList(cR,8)
+
+    local tab={_colLeft=cL, _colRight=cR, _panelCount=0}
+    self._tabs[idx]={page=page, btn=btn, stroke=btnS}
+
+    local function activate()
+        for i,t in ipairs(self._tabs) do
+            t.page.Visible=(i==idx)
+            t.btn.BackgroundColor3=(i==idx) and Theme.Main or Theme.BG
+            t.stroke.Color=(i==idx) and Theme.Outline or Theme.OutlineDim
+        end
+    end
+    btn.MouseButton1Click:Connect(activate)
+    btn.TouchTap:Connect(activate)
+
+    function tab:AddPanel(n, side)
+        self._panelCount=self._panelCount+1
+        local col = side=="right" and self._colRight
+                 or side=="left"  and self._colLeft
+                 or (self._panelCount%2==1 and self._colLeft or self._colRight)
+        return BuildPanel(col, n, self._panelCount)
+    end
+
+    return tab
+end
+
+-- ============================================================
+-- ABA UI SETTINGS (embutida, sempre última)
+-- ============================================================
+do
+    local sBtn=New("TextButton",{
+        Size=UDim2.new(0,0,1,0), AutomaticSize=Enum.AutomaticSize.X,
+        BackgroundColor3=Theme.BG, BorderSizePixel=0,
+        Text="UI Settings", Font=FONT, TextSize=FONTSIZE,
+        TextColor3=Theme.Font, ZIndex=3, LayoutOrder=999, AutoButtonColor=false,
+    }, TabRow)
+    Pad(sBtn,10,0)
+    local sBtnS=Stroke(sBtn,Theme.OutlineDim,1); Reg("Font",sBtn,"TextColor3")
+
+    local sPage=New("Frame",{Size=UDim2.new(1,0,0,0),BackgroundTransparency=1,Visible=false,BorderSizePixel=0,ClipsDescendants=false},ContentArea)
+    AutoY(sPage)
+    table.insert(UI._tabs,{page=sPage, btn=sBtn, stroke=sBtnS})
+
+    local function activateSettings()
+        for _,t in ipairs(UI._tabs) do t.page.Visible=false; t.btn.BackgroundColor3=Theme.BG; t.stroke.Color=Theme.OutlineDim end
+        sPage.Visible=true; sBtn.BackgroundColor3=Theme.Main; sBtnS.Color=Theme.Outline
+    end
+    sBtn.MouseButton1Click:Connect(activateSettings)
+    sBtn.TouchTap:Connect(activateSettings)
+
+    local sInner=New("Frame",{Size=UDim2.new(1,-10,0,0),Position=UDim2.new(0,5,0,5),BackgroundTransparency=1,ClipsDescendants=false},sPage)
+    AutoY(sInner)
+    if IsMobile then VList(sInner,8) else HList(sInner,4) end
+
+    local sL=New("Frame",{Size=IsMobile and UDim2.new(1,0,0,0) or UDim2.new(0.5,-2,0,0),BackgroundTransparency=1,ClipsDescendants=false,LayoutOrder=1},sInner)
+    AutoY(sL); VList(sL,8)
+    local sR=New("Frame",{Size=IsMobile and UDim2.new(1,0,0,0) or UDim2.new(0.5,-2,0,0),BackgroundTransparency=1,ClipsDescendants=false,LayoutOrder=2},sInner)
+    AutoY(sR); VList(sR,8)
+
+    -- Estado interno
+    local configs2,customThemes2={},{}
+    local autoloadCfg2="none"
+    local autoloadLbl2,cfgDDVal,cfgDDList,ctDDVal,ctDDList,customNameBox,configNameBox
+
+    local function getSnap() return {BG={Theme.BG.R,Theme.BG.G,Theme.BG.B},Main={Theme.Main.R,Theme.Main.G,Theme.Main.B},Accent={Theme.Accent.R,Theme.Accent.G,Theme.Accent.B},Outline={Theme.Outline.R,Theme.Outline.G,Theme.Outline.B},Font={Theme.Font.R,Theme.Font.G,Theme.Font.B}} end
+    local function applySnap(d)
+        local function toC(t) return Color3.fromRGB(math.floor(t[1]*255),math.floor(t[2]*255),math.floor(t[3]*255)) end
+        Theme.BG=toC(d.BG); Theme.Main=toC(d.Main); Theme.Accent=toC(d.Accent); Theme.Outline=toC(d.Outline); Theme.Font=toC(d.Font)
+        Theme.AccentOff=Theme.BG; Theme.Input=Color3.fromRGB(14,14,14); Theme.OutlineDim=Color3.fromRGB(55,55,55); ApplyTheme()
+    end
+
+    -- Helpers internos
+    local function SBtn(par,txt,ord,cb)
+        local b=New("TextButton",{Size=UDim2.new(1,0,0,22),BackgroundColor3=Theme.BG3,BorderSizePixel=0,Text=txt,Font=FONT,TextSize=FONTSIZE,TextColor3=Theme.Font,LayoutOrder=ord,AutoButtonColor=false},par)
+        local bS=Stroke(b,Theme.OutlineDim,1); Reg("BG3",b); Reg("OutlineDim",bS,"Color"); Reg("Font",b,"TextColor3")
+        b.MouseEnter:Connect(function() b.BackgroundColor3=Theme.Hover end); b.MouseLeave:Connect(function() b.BackgroundColor3=Theme.BG3 end)
+        b.MouseButton1Click:Connect(function() if cb then pcall(cb) end end); b.TouchTap:Connect(function() if cb then pcall(cb) end end)
+        return b
+    end
+    local function SBtnRow(par,ord,l1,c1,l2,c2)
+        local row=New("Frame",{Size=UDim2.new(1,0,0,22),BackgroundTransparency=1,LayoutOrder=ord},par); HList(row,3)
+        for _,p in ipairs({{l1,c1},{l2,c2}}) do
+            local b=New("TextButton",{Size=UDim2.new(0.5,-2,1,0),BackgroundColor3=Theme.BG3,BorderSizePixel=0,Text=p[1],Font=FONT,TextSize=FONTSIZE,TextColor3=Theme.Font,AutoButtonColor=false},row)
+            local bS=Stroke(b,Theme.OutlineDim,1); Reg("BG3",b); Reg("OutlineDim",bS,"Color"); Reg("Font",b,"TextColor3")
+            b.MouseEnter:Connect(function() b.BackgroundColor3=Theme.Hover end); b.MouseLeave:Connect(function() b.BackgroundColor3=Theme.BG3 end)
+            b.MouseButton1Click:Connect(function() if p[2] then pcall(p[2]) end end); b.TouchTap:Connect(function() if p[2] then pcall(p[2]) end end)
+        end
+    end
+    local function SLbl(par,txt,ord,dim)
+        local l=New("TextLabel",{Size=UDim2.new(1,0,0,16),BackgroundTransparency=1,Text=txt,Font=FONT,TextSize=FONTSIZE,TextColor3=dim and Theme.FontDim or Theme.Font,TextXAlignment=Enum.TextXAlignment.Left,LayoutOrder=ord},par)
+        Reg(dim and "FontDim" or "Font",l,"TextColor3"); return l
+    end
+    local function SSep(par,ord) local s=New("Frame",{Size=UDim2.new(1,0,0,1),BackgroundColor3=Theme.Outline,BorderSizePixel=0,LayoutOrder=ord},par); Reg("Outline",s) end
+    local function SGap(par,ord) New("Frame",{Size=UDim2.new(1,0,0,4),BackgroundTransparency=1,LayoutOrder=ord},par) end
+    local function SInput(par,ord)
+        local f=New("Frame",{Size=UDim2.new(1,0,0,22),BackgroundColor3=Theme.Input,BorderSizePixel=0,LayoutOrder=ord},par)
+        local fS=Stroke(f,Theme.OutlineDim,1); Reg("Input",f); Reg("OutlineDim",fS,"Color")
+        local b=New("TextBox",{Size=UDim2.new(1,-8,1,0),Position=UDim2.new(0,4,0,0),BackgroundTransparency=1,Text="",PlaceholderText="",PlaceholderColor3=Theme.FontDim,Font=FONT,TextSize=FONTSIZE,TextColor3=Theme.Font,TextXAlignment=Enum.TextXAlignment.Left,ClearTextOnFocus=false},f)
+        Reg("Font",b,"TextColor3"); Reg("FontDim",b,"PlaceholderColor3")
+        b.Focused:Connect(function() fS.Color=Theme.Outline end); b.FocusLost:Connect(function() fS.Color=Theme.OutlineDim end)
+        return f,b
+    end
+    local function SDD(par,ord)
+        local bF=New("Frame",{Size=UDim2.new(1,0,0,22),BackgroundColor3=Theme.Input,BorderSizePixel=0,ClipsDescendants=false,ZIndex=10,LayoutOrder=ord},par)
+        local bFS=Stroke(bF,Theme.OutlineDim,1); Reg("Input",bF); Reg("OutlineDim",bFS,"Color")
+        local sL=New("TextLabel",{Size=UDim2.new(1,-20,1,0),Position=UDim2.new(0,6,0,0),BackgroundTransparency=1,Text="--",Font=FONT,TextSize=FONTSIZE,TextColor3=Theme.Font,TextXAlignment=Enum.TextXAlignment.Left,ZIndex=11},bF)
+        Reg("Font",sL,"TextColor3")
+        New("TextLabel",{Size=UDim2.new(0,16,1,0),Position=UDim2.new(1,-18,0,0),BackgroundTransparency=1,Text="▼",Font=FONT,TextSize=10,TextColor3=Theme.FontDim,ZIndex=11},bF)
+        local dL=New("ScrollingFrame",{Size=UDim2.new(1,0,0,0),Position=UDim2.new(0,0,1,1),BackgroundColor3=Theme.Main,BorderSizePixel=0,Visible=false,ZIndex=20,ScrollBarThickness=4,ScrollBarImageColor3=Theme.Accent,CanvasSize=UDim2.new(0,0,0,0)},bF)
+        Stroke(dL,Theme.Outline,1); VList(dL,0); Reg("Main",dL); Reg("Accent",dL,"ScrollBarImageColor3")
+        local open=false
+        local c=New("TextButton",{Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,Text="",ZIndex=12},bF)
+        local function tog() open=not open; dL.Visible=open end
+        c.MouseButton1Click:Connect(tog); c.TouchTap:Connect(tog)
+        return sL,dL
+    end
+    local function refreshDD(vL,list,items,onSel)
+        list:ClearAllChildren(); VList(list,0)
+        if #items==0 then vL.Text="--"; list.CanvasSize=UDim2.new(0,0,0,0); list.Size=UDim2.new(1,0,0,0); return end
+        list.CanvasSize=UDim2.new(0,0,0,#items*22); list.Size=UDim2.new(1,0,0,math.min(#items,5)*22)
+        for _,item in ipairs(items) do
+            local it=New("TextButton",{Size=UDim2.new(1,0,0,22),BackgroundColor3=Theme.Main,BorderSizePixel=0,Text=item,Font=FONT,TextSize=FONTSIZE,TextColor3=Theme.Font,ZIndex=21,AutoButtonColor=false},list)
+            Reg("Main",it); Reg("Font",it,"TextColor3")
+            it.MouseEnter:Connect(function() it.BackgroundColor3=Theme.Hover end); it.MouseLeave:Connect(function() it.BackgroundColor3=Theme.Main end)
+            local function sel() vL.Text=item; list.Visible=false; if onSel then pcall(onSel,item) end end
+            it.MouseButton1Click:Connect(sel); it.TouchTap:Connect(sel)
+        end
+        vL.Text=items[#items]
+    end
+
+    -- PAINEL MENU (esquerda)
+    local mPanel=BuildPanel(sL,"Menu",1)
+    local mI=mPanel._inner; local mO=mPanel._order
+
+    SBtn(mI,"Unload",mO+1,function() ScreenGui:Destroy() end); mO=mO+1
+
+    -- Menu bind
+    do
+        mO=mO+1
+        local row=New("Frame",{Size=UDim2.new(1,0,0,22),BackgroundTransparency=1,LayoutOrder=mO},mI); HList(row,5)
+        local rl=New("TextLabel",{Size=UDim2.new(1,-60,0,22),BackgroundTransparency=1,Text="Menu bind",Font=FONT,TextSize=FONTSIZE,TextColor3=Theme.Font,TextXAlignment=Enum.TextXAlignment.Left},row); Reg("Font",rl,"TextColor3")
+        local kbBtn=New("TextButton",{Size=UDim2.new(0,50,0,18),BackgroundColor3=Theme.Input,BorderSizePixel=0,Text=IsMobile and "Toggle" or "End",Font=FONT,TextSize=11,TextColor3=Theme.Font,AutoButtonColor=false},row)
+        Stroke(kbBtn,Theme.OutlineDim,1); Reg("Input",kbBtn); Reg("Font",kbBtn,"TextColor3")
+        if not IsMobile then
+            local lb=false
+            kbBtn.MouseButton1Click:Connect(function()
+                if lb then return end; lb=true; kbBtn.Text="..."
+                local c; c=UserInputService.InputBegan:Connect(function(i,p)
+                    if p then return end
+                    if i.UserInputType==Enum.UserInputType.Keyboard then kbBtn.Text=i.KeyCode.Name; lb=false; c:Disconnect(); Toast("Keybind: "..i.KeyCode.Name) end
+                end)
+            end)
+        end
+    end
+
+    SSep(mI,mO+1); mO=mO+1
+    SLbl(mI,"Themes",mO+1); mO=mO+1
+
+    -- Color pickers
+    local colorCfg={{"BG","Background color"},{"Main","Main color"},{"Accent","Accent color"},{"Outline","Outline color"},{"Font","Font color"}}
+    for _,cfg in ipairs(colorCfg) do
+        local key2,label2=cfg[1],cfg[2]
+        mO=mO+1
+        local crow=New("Frame",{Size=UDim2.new(1,0,0,18),BackgroundTransparency=1,LayoutOrder=mO},mI); HList(crow,5)
+        local cl=New("TextLabel",{Size=UDim2.new(1,-50,0,18),BackgroundTransparency=1,Text=label2,Font=FONT,TextSize=FONTSIZE,TextColor3=Theme.Font,TextXAlignment=Enum.TextXAlignment.Left},crow); Reg("Font",cl,"TextColor3")
+        local prev=New("Frame",{Size=UDim2.new(0,38,0,13),BackgroundColor3=Theme[key2],BorderSizePixel=0},crow); Stroke(prev,Theme.OutlineDim,1); ColorPrevs[key2]=prev
+        mO=mO+1
+        local popup=New("Frame",{Size=UDim2.new(1,0,0,0),BackgroundColor3=Theme.BG3,BorderSizePixel=0,Visible=false,ZIndex=30,ClipsDescendants=false,LayoutOrder=mO},mI)
+        AutoY(popup); Stroke(popup,Theme.Outline,1); Pad(popup,5,5); VList(popup,4); Reg("BG3",popup)
+        local rgb2={r=Theme[key2].R*255,g=Theme[key2].G*255,b=Theme[key2].B*255}
+        local function upd2() local c=Color3.fromRGB(rgb2.r,rgb2.g,rgb2.b); Theme[key2]=c; if key2=="BG" then Theme.AccentOff=c end; prev.BackgroundColor3=c; ApplyTheme() end
+        for _,info in ipairs({{"r","R"},{"g","G"},{"b","B"}}) do
+            local ch2,lb2=info[1],info[2]
+            local sr=New("Frame",{Size=UDim2.new(1,0,0,14),BackgroundTransparency=1},popup); HList(sr,4)
+            New("TextLabel",{Size=UDim2.new(0,10,1,0),BackgroundTransparency=1,Text=lb2,Font=FONT,TextSize=10,TextColor3=Theme.FontDim,TextXAlignment=Enum.TextXAlignment.Left},sr)
+            local trk=New("Frame",{Size=UDim2.new(1,-30,1,0),BackgroundColor3=Theme.BG,BorderSizePixel=0},sr); Stroke(trk,Theme.OutlineDim,1); Reg("BG",trk)
+            local fl2=New("Frame",{Size=UDim2.new(rgb2[ch2]/255,0,1,0),BackgroundColor3=Theme.Accent,BorderSizePixel=0,ZIndex=2},trk); Reg("Accent",fl2)
+            local vl2=New("TextLabel",{Size=UDim2.new(0,24,1,0),BackgroundTransparency=1,Text=tostring(math.floor(rgb2[ch2])),Font=FONT,TextSize=10,TextColor3=Theme.Font},sr); Reg("Font",vl2,"TextColor3")
+            local sl2=false
+            local function upSl(x) local r2=math.clamp((x-trk.AbsolutePosition.X)/trk.AbsoluteSize.X,0,1); rgb2[ch2]=math.floor(r2*255); fl2.Size=UDim2.new(r2,0,1,0); vl2.Text=tostring(rgb2[ch2]); upd2() end
+            trk.InputBegan:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then sl2=true; upSl(i.Position.X) end end)
+            trk.InputEnded:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then sl2=false end end)
+            UserInputService.InputChanged:Connect(function(i) if sl2 and (i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch) then upSl(i.Position.X) end end)
+        end
+        local popOpen=false
+        local clk2=New("TextButton",{Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,Text="",ZIndex=4},crow)
+        local function togglePop() popOpen=not popOpen; popup.Visible=popOpen; if popOpen then rgb2={r=Theme[key2].R*255,g=Theme[key2].G*255,b=Theme[key2].B*255} end end
+        clk2.MouseButton1Click:Connect(togglePop); clk2.TouchTap:Connect(togglePop)
+    end
+
+    SSep(mI,mO+1); mO=mO+1
+    local themeNames={}; for k in pairs(BuiltinThemes) do table.insert(themeNames,k) end; table.sort(themeNames)
+    SLbl(mI,"Theme list",mO+1); mO=mO+1
+    local tDDVal,tDDList=SDD(mI,mO+1); mO=mO+1
+    refreshDD(tDDVal,tDDList,themeNames,function(v) ApplyBuiltinTheme(v); Toast("Tema \""..v.."\" aplicado!") end)
+    SBtn(mI,"Set as default",mO+1,function() Toast("Tema padrão definido!") end); mO=mO+1
+    SGap(mI,mO+1); mO=mO+1
+    SLbl(mI,"Custom theme name",mO+1); mO=mO+1
+    local _,customNameBox=SInput(mI,mO+1); mO=mO+1
+    SLbl(mI,"Custom themes",mO+1); mO=mO+1
+    local ctDDVal,ctDDList=SDD(mI,mO+1); mO=mO+1
+    local function refreshCT() local n2={}; for _,t2 in ipairs(customThemes2) do table.insert(n2,t2.name) end; refreshDD(ctDDVal,ctDDList,n2) end
+    SBtnRow(mI,mO+1,"Save theme",function()
+        local n=customNameBox.Text:match("^%s*(.-)%s*$"); if n=="" then Toast("Digite um nome!"); return end
+        local found=false; for _,t2 in ipairs(customThemes2) do if t2.name==n then t2.data=getSnap(); found=true; break end end
+        if not found then table.insert(customThemes2,{name=n,data=getSnap()}) end
+        refreshCT(); Toast("Tema \""..n.."\" salvo!")
+    end,"Load theme",function()
+        local sel=ctDDVal.Text; if sel=="--" then Toast("Selecione!"); return end
+        for _,t2 in ipairs(customThemes2) do if t2.name==sel then applySnap(t2.data); Toast("Tema \""..sel.."\" carregado!"); return end end
+    end); mO=mO+1
+    SBtn(mI,"Refresh list",mO+1,function() refreshCT(); Toast("Atualizado!") end); mO=mO+1
+    SBtn(mI,"Set as default",mO+1,function() local sel=ctDDVal.Text; if sel=="--" then Toast("Selecione!"); return end; Toast("\""..sel.."\" padrão!") end); mO=mO+1
+    SGap(mI,999)
+
+    -- PAINEL CONFIGURATION (direita)
+    local cPanel=BuildPanel(sR,"Configuration",1)
+    local cI=cPanel._inner; local cO=cPanel._order
+
+    SLbl(cI,"Config name",cO+1); cO=cO+1
+    local _,configNameBox=SInput(cI,cO+1); cO=cO+1
+    SGap(cI,cO+1); cO=cO+1
+    SLbl(cI,"Config list",cO+1); cO=cO+1
+    local cfgDDVal,cfgDDList=SDD(cI,cO+1); cO=cO+1
+    local function refreshCfg() local n2={}; for _,c in ipairs(configs2) do table.insert(n2,c.name) end; refreshDD(cfgDDVal,cfgDDList,n2) end
+    SBtnRow(cI,cO+1,"Create config",function()
+        local n=configNameBox.Text:match("^%s*(.-)%s*$"); if n=="" then Toast("Digite um nome!"); return end
+        for _,c in ipairs(configs2) do if c.name==n then Toast("Já existe!"); return end end
+        table.insert(configs2,{name=n,data=getSnap()}); refreshCfg(); Toast("Config \""..n.."\" criada!")
+    end,"Load config",function()
+        local sel=cfgDDVal.Text; if sel=="--" then Toast("Selecione!"); return end
+        for _,c in ipairs(configs2) do if c.name==sel then applySnap(c.data); Toast("Config \""..sel.."\" carregada!"); return end end
+    end); cO=cO+1
+    SBtn(cI,"Overwrite config",cO+1,function()
+        local sel=cfgDDVal.Text; if sel=="--" then Toast("Selecione!"); return end
+        for _,c in ipairs(configs2) do if c.name==sel then c.data=getSnap(); Toast("Sobrescrita!"); return end end
+    end); cO=cO+1
+    SBtn(cI,"Refresh list",cO+1,function() refreshCfg(); Toast("Atualizado!") end); cO=cO+1
+    SBtn(cI,"Set as autoload",cO+1,function()
+        local sel=cfgDDVal.Text; if sel=="--" then Toast("Selecione!"); return end
+        autoloadCfg2=sel; if autoloadLbl2 then autoloadLbl2.Text="Current autoload config: "..sel end; Toast("Autoload: "..sel)
+    end); cO=cO+1
+    autoloadLbl2=SLbl(cI,"Current autoload config: none",cO+1,true); cO=cO+1
+    SGap(cI,999)
+end
+
+return UI
