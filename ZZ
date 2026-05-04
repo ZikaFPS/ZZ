@@ -1109,5 +1109,3 @@ ZikaFPS.ActiveTab = "main"
 ZikaFPS.NavItems["main"].setActive(true)
 
 -- ══════════════════════════════════════════════════════
-print("[ZikaFPS] UI Loaded ✓  |  Menu Bind: RightShift")
-print("[ZikaFPS] Change bind in Config tab")
